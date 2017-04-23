@@ -18,15 +18,14 @@ import os
 
 """         Global Parameters        """
 # Visual Mode
-DEBUG = 1
+DEBUG = 0
 # Video Characteristics
 # Filtering by distance
 Filtering = False   # Filter part of the frame
-#   Params Filter
 N = 3               # It will draw lines whose points exceed from the 1/N of the image
 # Static Object
 Static = True       # If Static is False it apply minimun length to the lines in order to filter legs movement
-#   Params Non Static Case
+#   Non Static
 Minline_length = 100
 Maxline_gap = 0
 Threshold = 50      # Threshold of connected trajectories in order to detect a line
@@ -37,12 +36,16 @@ Threshold_static = 50
 # Point Extraction Variables
 LIMITSEP = 50       # Minimal separation between points Isolation point function
 MaxVar = 200        # Maximal distance allowed between frames
+# LED Detection
+SizeWin = 200       # Length in pixels of window around the led in order to Detect
+LedStart = 1        # State of Led at the beginning
+LedThreshold = 15000
 # File Directories
 InputDirectory = False
 Current_folder = os.path.dirname(os.path.abspath(__file__))
-Input_directory = os.path.join(Current_folder, 'src','170302')
-Output_directory = os.path.join(Current_folder, 'out','170302')
-File = "X.avi"#"170302_front_apple_long_pulse_1_20170302_181221_20170302_181338.avi"
+Input_directory = os.path.join(Current_folder, 'src','170411')
+Output_directory = os.path.join(Current_folder, 'out','170411')
+File = "170603_right_peppermint_double_pulse_1_20170306_171931_20170306_172132sh.avi"#"170302_front_apple_long_pulse_1_20170302_181221_20170302_181338.avi"
 
 """                                   """
 
@@ -59,20 +62,75 @@ def main():
     # Batch Tracking
     if InputDirectory:
         allfiles = [f for f in os.listdir(Input_directory) if os.path.isfile(os.path.join(Input_directory, f))]
+        init_points = list()
+        distal_points = list()
+        for a in allfiles:
+            in_name = os.path.join(Input_directory, a)
+
+            # """ Selecting points from the image """
+            cap = cv2.VideoCapture(in_name)
+            ret, frame = cap.read()  # Initialize Stream
+            fig, ax = plt.subplots()
+            #   Initial
+            ax.set(title='Click in Antenna INITIAL points Left, Right')
+            plt.imshow(frame)
+            (ant_iniL, ant_iniR) = plt.ginput(2)
+            ant_iniL = (int(ant_iniL[0]), int(ant_iniL[1]))
+            ant_iniR = (int(ant_iniR[0]), int(ant_iniR[1]))
+            #   Distal
+            ax.set(title='Click in Antenna DISTAL points Left, Right')
+            plt.imshow(frame)
+            (end_pL, end_pR) = plt.ginput(2)
+            end_pL = (int(end_pL[0]), int(end_pL[1]))
+            end_pR = (int(end_pR[0]), int(end_pR[1]))
+            plt.close()
+            init_points.append((ant_iniL, ant_iniR))
+            distal_points.append((end_pL, end_pR))
+
         for a in allfiles:
             in_name = os.path.join(Input_directory, a)
             out_name = os.path.join(Output_directory, a.split('.')[0] + '.txt')
-            trackVideo(in_name, out_name)
+            trackVideo(in_name, out_name, init_points.pop(0), distal_points.pop(0))
     else:
         in_name = os.path.join(Input_directory, File)
         out_name = os.path.join(Output_directory, File.split('.')[0] + '.txt')
-        trackVideo(in_name, out_name)
+        # """ Selecting points from the image """
+        cap = cv2.VideoCapture(in_name)
+        ret, frame = cap.read()  # Initialize Stream
+        #   Fetching Filename Control
+        if not ret:
+            print "File " + in_name + " Not found"
+            return
+
+        fig, ax = plt.subplots()
+        #   Initial
+        ax.set(title='Click in Antenna INITIAL points Left, Right')
+        plt.imshow(frame)
+        (ant_iniL, ant_iniR) = plt.ginput(2)
+        ant_iniL = (int(ant_iniL[0]), int(ant_iniL[1]))
+        ant_iniR = (int(ant_iniR[0]), int(ant_iniR[1]))
+        #   Distal
+        ax.set(title='Click in Antenna DISTAL points Left, Right')
+        plt.imshow(frame)
+        (end_pL, end_pR) = plt.ginput(2)
+        end_pL = (int(end_pL[0]), int(end_pL[1]))
+        end_pR = (int(end_pR[0]), int(end_pR[1]))
+
+        ax.set(title='Click in LED position')
+        plt.imshow(frame)
+        (point) = plt.ginput(1)
+        point = (int(point[0][0]), int(point[0][1]))
+        plt.close()
+        init_p = (ant_iniL, ant_iniR)
+        distal_p = (end_pL, end_pR)
+
+        trackVideo(in_name, out_name, init_p, distal_p, point)
     return
 
 
 
 
-def trackVideo(input_name, output_name):
+def trackVideo(input_name, output_name, init_points, distal_points, point):
     """
         Main function of tracking
         Inputs a video file
@@ -80,51 +138,52 @@ def trackVideo(input_name, output_name):
     """
     print "Reading file " + input_name
     # """ Initialize variables """
+    ant_iniL = init_points[0]
+    ant_iniR = init_points[1]
+    end_pL   = distal_points[0]
+    end_pR   = distal_points[1]
     count = 0                           # Count loop for file manipulation
     prev_angL = 0                      # Initialize memory previous angle Left
     prev_angR = 0                      # Initialize memory previous angle Right
+    led_state = LedStart               # Inital state of the LED
+    mem_points = {"Left": end_pL, "Right": end_pR}
     #   Dynamic Background Extraction Properties
     fgbg500 = cv2.createBackgroundSubtractorMOG2(history=500, varThreshold=100, detectShadows=True)
     cap = cv2.VideoCapture(input_name)    # Video Capture and Windowing
     ret, frame = cap.read()             # Initialize Stream
-    #   Fetching Filename Control
-    if not ret:
-        print "File " + input_name + " Not found"
-        return
-
-    # """ Selecting points from the image """
-    fig, ax = plt.subplots()
-    #   Initial
-    ax.set(title='Click in Antenna INITIAL points Left, Right')
-    plt.imshow(frame)
-    (ant_iniL, ant_iniR) = plt.ginput(2)
-    ant_iniL = (int(ant_iniL[0]), int(ant_iniL[1]))
-    ant_iniR = (int(ant_iniR[0]), int(ant_iniR[1]))
-    #   Distal
-    ax.set(title='Click in Antenna DISTAL points Left, Right')
-    plt.imshow(frame)
-    (end_pl, end_pr) = plt.ginput(2)
-    end_pl = (int(end_pl[0]), int(end_pl[1]))
-    end_pr = (int(end_pr[0]), int(end_pr[1]))
-    mem_points = {"Left": end_pl, "Right": end_pr}
-    plt.close()
 
     #   Open Output points file
     fo = open(output_name, "wb")
-    fo.write(" \tSample\t\tLeft\t\t\tRight\t\t\tAngleLeft\tAngleRight\n")
+    fo.write(" \tSample\t\tLeft\t\t\tRight\t\t\tAngleLeft\tAngleRight\tLedState\n")
     #   Use first image as Background
     fgmask500 = fgbg500.apply(frame)
     fgmask500 = cv2.dilate(fgmask500, kernel=np.ones((5, 5)), iterations=1)  # Clean image extraction
+    crop_img = frame[max(0, point[1] - SizeWin / 2):min(point[1] + SizeWin / 2, frame.shape[0]),
+               max(0, point[0] - SizeWin / 2):min(point[0] + SizeWin / 2,
+                                                  frame.shape[1])]  # Crop from x, y, w, h -> 100, 200, 300, 400
+    sumPix = sum(cv2.sumElems(crop_img))
 
     # """ Infinite loop until no more images in video buffer """
     while (ret):
         # Fetch new Frame
         ret, frame = cap.read()
 
+        # """ Crop and compare LED Image """
+        crop_img = frame[ max(0,point[1] - SizeWin/2):min(point[1] + SizeWin/2 , frame.shape[0] ), max(0, point[0] - SizeWin/2):min(point[0] + SizeWin/2, frame.shape[1] )]  # Crop from x, y, w, h -> 100, 200, 300, 400
+        if sum(cv2.sumElems(crop_img)) - sumPix > LedThreshold:
+            led_state += 1
+        elif sum(cv2.sumElems(crop_img)) - sumPix < -LedThreshold:
+            led_state -= 1
+        sumPix = sum(cv2.sumElems(crop_img))
+        # See Image cropped
+        #cv2.imshow("cropped", crop_img)
+        #cv2.waitKey()
+
         #  """ Move Detection """
         #   Background Extraction (See above for params)
         fgmask500 = fgbg500.apply(frame)
         fgmask500 = cv2.dilate(fgmask500, kernel=np.ones((5, 5)), iterations=1)  # Clean image extraction
+
 
         #  """ Line Detection """
         blank_image = np.zeros((frame.shape[0], frame.shape[1], 3), np.uint8)
@@ -156,26 +215,26 @@ def trackVideo(input_name, output_name):
         blank_image[corn_ind > 0.01 * corn_ind.max()] = [0, 0, 255]
 
         # """ Points Extraction """
-        detect_points = extractPoints(blank_image, end_pl, end_pr)
+        detect_points = extractPoints(blank_image, end_pL, end_pR)
 
         # """ PostProcess Points """
-            # Select points in Angle Calculation
+        # Select points in Angle Calculation
         (ant_endL, ant_endR) = detection(detect_points, mem_points)
         mem_points["Left"] = ant_endL
         mem_points["Right"] = ant_endR
-            # Calculate Angles
+        # Calculate Angles
         angleL = get_angle(ant_iniL, ant_endL)
         angleR = get_angle(ant_iniR, ant_endR)
-            # Converting values into 0-180
+        # Converting values into 0-180
         (angleL, prev_angL) = correctAngles(angleL, prev_angL)
         (angleR, prev_angR) = correctAngles(angleR, prev_angR)
 
         # """ Output """
-            # File Output
+        # File Output
         line = "\t" + str(count) + "\t\t" + str(ant_endL) + "\t\t" + str(ant_endR) + "\t\t" + str(angleL) + "\t\t" \
-               + str(angleR) + "\t\t" + "\n"
+               + str(angleR) + "\t\t" + str(led_state) +"\n"
         fo.write(line)
-            # Graphic Debug
+        # Graphic Debug
         if DEBUG:
             cv2.imshow('BE', fgmask500)
             cv2.imshow('LD', blank_image)
@@ -183,7 +242,7 @@ def trackVideo(input_name, output_name):
             k = cv2.waitKey(30) & 0xff
             if k == 27:
                 break
-            # Frame by frame cv2.waitKey()
+                # Frame by frame cv2.waitKey()
         # """ Update counter """
         count += 1
 
@@ -192,6 +251,8 @@ def trackVideo(input_name, output_name):
     cap.release()
     if DEBUG:
         cv2.destroyAllWindows()
+    print "Closing file " + input_name
+    return
 
 
 def extractPoints(blank_image, end_pl, end_pr):
