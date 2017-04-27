@@ -14,7 +14,7 @@ import numpy as np
 import cv2
 import math
 import os
-
+import time
 
 """         Global Parameters        """
 # Visual Mode
@@ -38,12 +38,12 @@ LIMITSEP = 50       # Minimal separation between points Isolation point function
 MaxVar = 200        # Maximal distance allowed between frames
 # LED Detection
 SizeWin = 200       # Length in pixels of window around the led in order to Detect
-LedStart = 1        # State of Led at the beginning
+LedStart = 0        # State of Led at the beginning
 LedThreshold = 15000
 # File Directories
-InputDirectory = False
+InputDirectory = True
 Current_folder = os.path.dirname(os.path.abspath(__file__))
-Input_directory = os.path.join(Current_folder, 'src','170411')
+Input_directory = os.path.join(Current_folder, 'src','170411_alone')
 Output_directory = os.path.join(Current_folder, 'out','170411')
 File = "170603_right_peppermint_double_pulse_1_20170306_171931_20170306_172132sh.avi"#"170302_front_apple_long_pulse_1_20170302_181221_20170302_181338.avi"
 
@@ -64,6 +64,7 @@ def main():
         allfiles = [f for f in os.listdir(Input_directory) if os.path.isfile(os.path.join(Input_directory, f))]
         init_points = list()
         distal_points = list()
+        l_points = list()
         for a in allfiles:
             in_name = os.path.join(Input_directory, a)
 
@@ -83,14 +84,19 @@ def main():
             (end_pL, end_pR) = plt.ginput(2)
             end_pL = (int(end_pL[0]), int(end_pL[1]))
             end_pR = (int(end_pR[0]), int(end_pR[1]))
+            ax.set(title='Click in LED position')
+            plt.imshow(frame)
+            (point) = plt.ginput(1)
+            point = (int(point[0][0]), int(point[0][1]))
             plt.close()
+            l_points.append(point)
             init_points.append((ant_iniL, ant_iniR))
             distal_points.append((end_pL, end_pR))
 
         for a in allfiles:
             in_name = os.path.join(Input_directory, a)
             out_name = os.path.join(Output_directory, a.split('.')[0] + '.txt')
-            trackVideo(in_name, out_name, init_points.pop(0), distal_points.pop(0))
+            trackVideo(in_name, out_name, init_points.pop(0), distal_points.pop(0), l_points.pop(0))
     else:
         in_name = os.path.join(Input_directory, File)
         out_name = os.path.join(Output_directory, File.split('.')[0] + '.txt')
@@ -151,7 +157,6 @@ def trackVideo(input_name, output_name, init_points, distal_points, point):
     fgbg500 = cv2.createBackgroundSubtractorMOG2(history=500, varThreshold=100, detectShadows=True)
     cap = cv2.VideoCapture(input_name)    # Video Capture and Windowing
     ret, frame = cap.read()             # Initialize Stream
-
     #   Open Output points file
     fo = open(output_name, "wb")
     fo.write(" \tSample\t\tLeft\t\t\tRight\t\t\tAngleLeft\tAngleRight\tLedState\n")
@@ -161,15 +166,16 @@ def trackVideo(input_name, output_name, init_points, distal_points, point):
     crop_img = frame[max(0, point[1] - SizeWin / 2):min(point[1] + SizeWin / 2, frame.shape[0]),
                max(0, point[0] - SizeWin / 2):min(point[0] + SizeWin / 2,
                                                   frame.shape[1])]  # Crop from x, y, w, h -> 100, 200, 300, 400
+    # Init
     sumPix = sum(cv2.sumElems(crop_img))
-
+    ret, frame = cap.read()    
+    t = time.clock()
     # """ Infinite loop until no more images in video buffer """
     while (ret):
-        # Fetch new Frame
-        ret, frame = cap.read()
 
         # """ Crop and compare LED Image """
         crop_img = frame[ max(0,point[1] - SizeWin/2):min(point[1] + SizeWin/2 , frame.shape[0] ), max(0, point[0] - SizeWin/2):min(point[0] + SizeWin/2, frame.shape[1] )]  # Crop from x, y, w, h -> 100, 200, 300, 400
+
         if sum(cv2.sumElems(crop_img)) - sumPix > LedThreshold:
             led_state += 1
         elif sum(cv2.sumElems(crop_img)) - sumPix < -LedThreshold:
@@ -228,6 +234,11 @@ def trackVideo(input_name, output_name, init_points, distal_points, point):
         # Converting values into 0-180
         (angleL, prev_angL) = correctAngles(angleL, prev_angL)
         (angleR, prev_angR) = correctAngles(angleR, prev_angR)
+	if DEBUG:
+		cv2.circle(blank_image, ant_endL, 30, (0, 0, 255))
+		cv2.circle(blank_image, ant_endR, 30, (0, 255, 0))
+		cv2.imshow("cropped", blank_image)
+		cv2.waitKey()	
 
         # """ Output """
         # File Output
@@ -243,9 +254,11 @@ def trackVideo(input_name, output_name, init_points, distal_points, point):
             if k == 27:
                 break
                 # Frame by frame cv2.waitKey()
-        # """ Update counter """
+        # """ Update """
         count += 1
-
+	ret, frame = cap.read()    
+    tt = time.clock()
+    print tt-t
     # Close open file
     fo.close()
     cap.release()
@@ -269,67 +282,42 @@ def extractPoints(blank_image, end_pl, end_pr):
     control_y = False
     control_x = False
     length_image = blank_image.shape
-        # X Axis
-    for j in range(length_image[1]):
-        for i in range(length_image[0]):
-            if blank_image[i][j][0] != 0 or blank_image[i][j][1] != 0 or blank_image[i][j][2] != 0:
-                x_axis.append((j, i))
-                control_x = True
-        if control_x:
-            break
-        # Y Axis
-    for i in range(length_image[0]):
-        for j in range(length_image[1]):
-            if blank_image[i][j][0] != 0 or blank_image[i][j][1] != 0 or blank_image[i][j][2] != 0:
-                y_axis.append((j, i))
-                control_y = True
-        if control_y:
-            break
-    control_y = False
-    control_x = False
-        # Reversed X Axis
-    for j in reversed(range(length_image[1])):
-        for i in range(length_image[0]):
-            if blank_image[i][j][0] != 0 or blank_image[i][j][1] != 0 or blank_image[i][j][2] != 0:
-                xr_axis.append((j, i))
-                control_x = True
-        if control_x:
-            break
-        # Reversed Y Axis
-    for i in range(length_image[0]):
-        for j in reversed(range(length_image[1])):
-            if blank_image[i][j][0] != 0 or blank_image[i][j][1] != 0 or blank_image[i][j][2] != 0:
-                yr_axis.append((j, i))
-                control_y = True
-        if control_y:
-            break
-    if not x_axis:
-        x_axis.append(end_pl)
-    if not y_axis:
-        y_axis.append(end_pr)
-    if not xr_axis:
-        xr_axis.append(end_pr)
-    if not yr_axis:
-        yr_axis.append(end_pl)
-    point1 = x_axis[0]  # if xAxis else distalPoint
-    point2 = y_axis[0]  # if yAxis else distalPoint
-    point3 = xr_axis[0]  # if xRAxis else distalPoint
-    point4 = yr_axis[0]  # if yRAxis else distalPoint
+
+    leftList = list()
+    rightList = list()
+    topList = list()
+    bottomList = list()
+
+    # Extract limit points of the image
+    img_grey = cv2.cvtColor(blank_image, cv2.COLOR_BGR2GRAY)   # Convert to black/white
+    ret,img_thresh = cv2.threshold(img_grey,127,255,0)		# Threshold
+    unp,contours, hierarchy = cv2.findContours(img_thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE) # FindContours
+    for cnt in contours:		# Merge all contours points
+	leftList.append(tuple(cnt[cnt[:,:,0].argmin()][0]))
+	rightList.append(tuple(cnt[cnt[:,:,0].argmax()][0]))
+	topList.append(tuple(cnt[cnt[:,:,1].argmin()][0]))
+	bottomList.append(tuple(cnt[cnt[:,:,1].argmax()][0]))
+    # Sort and choose first in each of the directions
+    x = sorted(leftList, key=lambda x: x[0])[0]	
+    xR = sorted(rightList, key=lambda x: x[0], reverse = True)[0]
+    y = sorted(topList, key=lambda x: x[1])[0]	
+    yR = sorted(bottomList, key=lambda x: x[1], reverse = True)[0]	
+ 
 
     # Filtering by distances
-    if x_axis:
-        cv2.circle(blank_image, point1, 30, (0, 0, 255))
-        detect_points.append(point1)
-    if y_axis and distance(point1, point2) > LIMITSEP:
-        cv2.circle(blank_image, point2, 30, (0, 255, 0))
-        detect_points.append(point2)
-    if xr_axis and distance(point1, point3) > LIMITSEP and distance(point3, point2) > LIMITSEP:
-        cv2.circle(blank_image, point3, 30, (255, 0, 255))
-        detect_points.append(point3)
-    if yr_axis and distance(point1, point4) > LIMITSEP and distance(point4, point2) > LIMITSEP and distance(
-            point4, point3) > LIMITSEP:
-        cv2.circle(blank_image, point4, 30, (255, 255, 0))
-        detect_points.append(point4)
+    if DEBUG:
+        cv2.circle(blank_image, x, 30, (0, 0, 255))
+        cv2.circle(blank_image, xR, 30, (0, 255, 0))
+        cv2.circle(blank_image, y, 30, (255, 0, 255))
+        cv2.circle(blank_image, yR, 30, (255,255,0))
+    detect_points.append(x)
+    if distance(xR, x) > LIMITSEP:
+        detect_points.append(xR)
+    if distance(y, x) > LIMITSEP and distance(y, xR) > LIMITSEP:
+        detect_points.append(y)
+    if distance(yR, x) > LIMITSEP and distance(yR, xR) > LIMITSEP and distance(
+            yR, y) > LIMITSEP:
+        detect_points.append(yR)
 
     return detect_points
 
