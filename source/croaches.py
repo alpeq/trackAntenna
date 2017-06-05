@@ -18,17 +18,8 @@ import time
 
 """         Global Parameters        """
 # Visual Mode
-DEBUG = 0
+DEBUG = 1
 # Video Characteristics
-# Filtering by distance
-Filtering = False   # Filter part of the frame
-N = 3               # It will draw lines whose points exceed from the 1/N of the image
-# Static Object
-Static = True       # If Static is False it apply minimun length to the lines in order to filter legs movement
-#   Non Static
-Minline_length = 100
-Maxline_gap = 0
-Threshold = 50      # Threshold of connected trajectories in order to detect a line
 #   Params Static Case
 Minline_length_static = 50
 Maxline_gap_static = 0
@@ -41,17 +32,12 @@ SizeWin = 200       # Length in pixels of window around the led in order to Dete
 LedStart = 0        # State of Led at the beginning
 LedThreshold = 15000
 # File Directories
-InputDirectory = True
 Current_folder = os.path.dirname(os.path.abspath(__file__))
-Input_directory = os.path.join(Current_folder, 'src','170411_alone')
-Output_directory = os.path.join(Current_folder, 'out','170411')
-File = "170603_right_peppermint_double_pulse_1_20170306_171931_20170306_172132sh.avi"#"170302_front_apple_long_pulse_1_20170302_181221_20170302_181338.avi"
+Input_directory = os.path.join(Current_folder, 'src')
+Output_directory = os.path.join(Current_folder, 'out')
 
 """                                   """
 
-#              Image => (0,0)xxxxxxxxxxxxxxx(i,0)
-#                       (0,j/N)xxxxxxxxxxx(i,j/N)
-#                       (0,j)xxxxxxxxxxxxxxx(i,j)
 
 
 def main():
@@ -59,55 +45,16 @@ def main():
     if DEBUG:
         cv2.namedWindow("BE", cv2.WINDOW_NORMAL)
         cv2.namedWindow("LD", cv2.WINDOW_NORMAL)
-    # Batch Tracking
-    if InputDirectory:
-        allfiles = [f for f in os.listdir(Input_directory) if os.path.isfile(os.path.join(Input_directory, f))]
-        init_points = list()
-        distal_points = list()
-        l_points = list()
-        for a in allfiles:
-            in_name = os.path.join(Input_directory, a)
-
-            # """ Selecting points from the image """
-            cap = cv2.VideoCapture(in_name)
-            ret, frame = cap.read()  # Initialize Stream
-            fig, ax = plt.subplots()
-            #   Initial
-            ax.set(title='Click in Antenna INITIAL points Left, Right')
-            plt.imshow(frame)
-            (ant_iniL, ant_iniR) = plt.ginput(2)
-            ant_iniL = (int(ant_iniL[0]), int(ant_iniL[1]))
-            ant_iniR = (int(ant_iniR[0]), int(ant_iniR[1]))
-            #   Distal
-            ax.set(title='Click in Antenna DISTAL points Left, Right')
-            plt.imshow(frame)
-            (end_pL, end_pR) = plt.ginput(2)
-            end_pL = (int(end_pL[0]), int(end_pL[1]))
-            end_pR = (int(end_pR[0]), int(end_pR[1]))
-            ax.set(title='Click in LED position')
-            plt.imshow(frame)
-            (point) = plt.ginput(1)
-            point = (int(point[0][0]), int(point[0][1]))
-            plt.close()
-            l_points.append(point)
-            init_points.append((ant_iniL, ant_iniR))
-            distal_points.append((end_pL, end_pR))
-
-        for a in allfiles:
-            in_name = os.path.join(Input_directory, a)
-            out_name = os.path.join(Output_directory, a.split('.')[0] + '.txt')
-            trackVideo(in_name, out_name, init_points.pop(0), distal_points.pop(0), l_points.pop(0))
-    else:
-        in_name = os.path.join(Input_directory, File)
-        out_name = os.path.join(Output_directory, File.split('.')[0] + '.txt')
+    # Batch Tracking, all files in the specified directory
+    allfiles = [f for f in os.listdir(Input_directory) if os.path.isfile(os.path.join(Input_directory, f))]
+    init_points = list()
+    distal_points = list()
+    l_points = list()
+    for a in allfiles:
+        in_name = os.path.join(Input_directory, a)
         # """ Selecting points from the image """
         cap = cv2.VideoCapture(in_name)
         ret, frame = cap.read()  # Initialize Stream
-        #   Fetching Filename Control
-        if not ret:
-            print "File " + in_name + " Not found"
-            return
-
         fig, ax = plt.subplots()
         #   Initial
         ax.set(title='Click in Antenna INITIAL points Left, Right')
@@ -121,16 +68,22 @@ def main():
         (end_pL, end_pR) = plt.ginput(2)
         end_pL = (int(end_pL[0]), int(end_pL[1]))
         end_pR = (int(end_pR[0]), int(end_pR[1]))
-
+        # LED
         ax.set(title='Click in LED position')
         plt.imshow(frame)
         (point) = plt.ginput(1)
         point = (int(point[0][0]), int(point[0][1]))
         plt.close()
-        init_p = (ant_iniL, ant_iniR)
-        distal_p = (end_pL, end_pR)
+        # Add initial points
+        l_points.append(point)
+        init_points.append((ant_iniL, ant_iniR))
+        distal_points.append((end_pL, end_pR))
 
-        trackVideo(in_name, out_name, init_p, distal_p, point)
+    for a in allfiles:
+        in_name = os.path.join(Input_directory, a)
+        out_name = os.path.join(Output_directory, a.split('.')[0] + '.txt')
+        trackVideo(in_name, out_name, init_points.pop(0), distal_points.pop(0), l_points.pop(0))
+
     return
 
 
@@ -140,7 +93,7 @@ def trackVideo(input_name, output_name, init_points, distal_points, point):
     """
         Main function of tracking
         Inputs a video file
-        Outputs a sequence position of points correlated by lines
+        Outputs a sequence of positional points correlated by the lines
     """
     print "Reading file " + input_name
     # """ Initialize variables """
@@ -163,6 +116,7 @@ def trackVideo(input_name, output_name, init_points, distal_points, point):
     #   Use first image as Background
     fgmask500 = fgbg500.apply(frame)
     fgmask500 = cv2.dilate(fgmask500, kernel=np.ones((5, 5)), iterations=1)  # Clean image extraction
+    #   Crop image of the LED and calculate pixel colour
     crop_img = frame[max(0, point[1] - SizeWin / 2):min(point[1] + SizeWin / 2, frame.shape[0]),
                max(0, point[0] - SizeWin / 2):min(point[0] + SizeWin / 2,
                                                   frame.shape[1])]  # Crop from x, y, w, h -> 100, 200, 300, 400
@@ -175,15 +129,14 @@ def trackVideo(input_name, output_name, init_points, distal_points, point):
 
         # """ Crop and compare LED Image """
         crop_img = frame[ max(0,point[1] - SizeWin/2):min(point[1] + SizeWin/2 , frame.shape[0] ), max(0, point[0] - SizeWin/2):min(point[0] + SizeWin/2, frame.shape[1] )]  # Crop from x, y, w, h -> 100, 200, 300, 400
-
         if sum(cv2.sumElems(crop_img)) - sumPix > LedThreshold:
             led_state += 1
         elif sum(cv2.sumElems(crop_img)) - sumPix < -LedThreshold:
             led_state -= 1
         sumPix = sum(cv2.sumElems(crop_img))
         # See Image cropped
-        #cv2.imshow("cropped", crop_img)
-        #cv2.waitKey()
+        if DEBUG:
+            cv2.imshow("LED", crop_img)
 
         #  """ Move Detection """
         #   Background Extraction (See above for params)
@@ -194,31 +147,15 @@ def trackVideo(input_name, output_name, init_points, distal_points, point):
         #  """ Line Detection """
         blank_image = np.zeros((frame.shape[0], frame.shape[1], 3), np.uint8)
         #   Get Lines
-        if Static:
-            lines = cv2.HoughLinesP(fgmask500, 1, np.pi / 180, Threshold_static, lines=None,
-                                    minLineLength=Minline_length_static, maxLineGap=Maxline_gap_static)
-        else:
-            lines = cv2.HoughLinesP(fgmask500, 1, np.pi / 180, Threshold, lines=None, minLineLength=Minline_length,
-                                    maxLineGap=Maxline_gap)
+        lines = cv2.HoughLinesP(fgmask500, 1, np.pi / 180, Threshold_static, lines=None,
+                                minLineLength=Minline_length_static, maxLineGap=Maxline_gap_static)
         #   Draw Lines
         try:
             for draw in lines:
                 for x1, y1, x2, y2 in draw:
-                    if Filtering:
-                        if y1 > frame.shape[0] / N and y2 > frame.shape[0] / N:
-                            cv2.line(blank_image, (x1, y1), (x2, y2), (0, 255, 0), 3)
-                    else:
-                        cv2.line(blank_image, (x1, y1), (x2, y2), (0, 255, 0), 3)
+                    cv2.line(blank_image, (x1, y1), (x2, y2), (0, 255, 0), 3)
         except:
             pass
-
-        # """ Harris Corner Detection """
-        gray_depth = cv2.cvtColor(blank_image, cv2.COLOR_BGR2GRAY)
-        gray_depth = np.float32(gray_depth)
-        corn_ind = cv2.cornerHarris(gray_depth, 2, 3, 0.1)
-        corn_ind = cv2.dilate(corn_ind, None)
-        #   Threshold on image for an optimal value.
-        blank_image[corn_ind > 0.01 * corn_ind.max()] = [0, 0, 255]
 
         # """ Points Extraction """
         detect_points = extractPoints(blank_image, end_pL, end_pR)
@@ -234,31 +171,29 @@ def trackVideo(input_name, output_name, init_points, distal_points, point):
         # Converting values into 0-180
         (angleL, prev_angL) = correctAngles(angleL, prev_angL)
         (angleR, prev_angR) = correctAngles(angleR, prev_angR)
-	if DEBUG:
-		cv2.circle(blank_image, ant_endL, 30, (0, 0, 255))
-		cv2.circle(blank_image, ant_endR, 30, (0, 255, 0))
-		cv2.imshow("cropped", blank_image)
-		cv2.waitKey()	
 
         # """ Output """
         # File Output
         line = "\t" + str(count) + "\t\t" + str(ant_endL) + "\t\t" + str(ant_endR) + "\t\t" + str(angleL) + "\t\t" \
                + str(angleR) + "\t\t" + str(led_state) +"\n"
         fo.write(line)
-        # Graphic Debug
+        # Graphic Debug Red and Green circle colours of the point selected
         if DEBUG:
+            cv2.circle(blank_image, ant_endL, 30, (0, 0, 255))
+            cv2.circle(blank_image, ant_endR, 30, (0, 255, 0))
             cv2.imshow('BE', fgmask500)
             cv2.imshow('LD', blank_image)
-            # Escape Button [Esc]
+            # Escape Button [Esc], for frame by frame mode replace with cv2.waitKey()
             k = cv2.waitKey(30) & 0xff
             if k == 27:
                 break
-                # Frame by frame cv2.waitKey()
-        # """ Update """
+        # """ Update Loop"""
         count += 1
 	ret, frame = cap.read()    
     tt = time.clock()
-    print tt-t
+    # Print time
+    if DEBUG:
+        print tt-t
     # Close open file
     fo.close()
     cap.release()
@@ -292,24 +227,25 @@ def extractPoints(blank_image, end_pl, end_pr):
     img_grey = cv2.cvtColor(blank_image, cv2.COLOR_BGR2GRAY)   # Convert to black/white
     ret,img_thresh = cv2.threshold(img_grey,127,255,0)		# Threshold
     unp,contours, hierarchy = cv2.findContours(img_thresh,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE) # FindContours
+
     for cnt in contours:		# Merge all contours points
-	leftList.append(tuple(cnt[cnt[:,:,0].argmin()][0]))
-	rightList.append(tuple(cnt[cnt[:,:,0].argmax()][0]))
-	topList.append(tuple(cnt[cnt[:,:,1].argmin()][0]))
-	bottomList.append(tuple(cnt[cnt[:,:,1].argmax()][0]))
+        leftList.append(tuple(cnt[cnt[:,:,0].argmin()][0]))
+        rightList.append(tuple(cnt[cnt[:,:,0].argmax()][0]))
+        topList.append(tuple(cnt[cnt[:,:,1].argmin()][0]))
+        bottomList.append(tuple(cnt[cnt[:,:,1].argmax()][0]))
     # Sort and choose first in each of the directions
     x = sorted(leftList, key=lambda x: x[0])[0]	
     xR = sorted(rightList, key=lambda x: x[0], reverse = True)[0]
     y = sorted(topList, key=lambda x: x[1])[0]	
     yR = sorted(bottomList, key=lambda x: x[1], reverse = True)[0]	
- 
 
-    # Filtering by distances
+
     if DEBUG:
         cv2.circle(blank_image, x, 30, (0, 0, 255))
         cv2.circle(blank_image, xR, 30, (0, 255, 0))
         cv2.circle(blank_image, y, 30, (255, 0, 255))
         cv2.circle(blank_image, yR, 30, (255,255,0))
+    # Filtering by distances
     detect_points.append(x)
     if distance(xR, x) > LIMITSEP:
         detect_points.append(xR)
