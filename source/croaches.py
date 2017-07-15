@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-
+ 
 """ Image Detection Module.
     in: video file format avi or image sequence
     output: data file with angle position of detection according params
