@@ -77,7 +77,7 @@ def main():
 
 
         # Filter
-        ax.set(title='Click in Filter')
+        ax.set(title='Click in Filter (UpperLeft and UpperRight of a square area)')
         plt.imshow(frame)
         (filterL,filterR) = plt.ginput(2)
         filterL = (int(filterL[0]), int(filterL[1]))
@@ -166,6 +166,7 @@ def trackVideo(input_name, output_name, init_points, distal_points, point, filte
         try:
             for draw in lines:
                 for x1, y1, x2, y2 in draw:
+		    # Filter
                     if y1 > min(filterL[1], filterR[1]) and (x1 > filterL[0]) and (x1 < filterR[0]) \
                             and mem_points.get("Left")[1] < 0.9*(min(filterL[1], filterR[1])) and mem_points.get("Right")[1] < 0.9*(min(filterL[1], filterR[1]) ):
                         continue
