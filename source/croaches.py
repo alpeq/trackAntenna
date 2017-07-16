@@ -26,11 +26,16 @@ Maxline_gap_static = 0
 Threshold_static = 50
 # Point Extraction Variables
 LIMITSEP = 50       # Minimal separation between points Isolation point function
-MaxVar = 200        # Maximal distance allowed between frames
+MaxVar = 80        # Maximal distance allowed between frames for point detection #200
 # LED Detection
 SizeWin = 200       # Length in pixels of window around the led in order to Detect
 LedStart = 0        # State of Led at the beginning
 LedThreshold = 15000
+# Number of missed distal points allowed
+MissTresh = 10
+# Counter for missed distal points
+missedpts_l = [0]  # left antenna
+missedpts_r = [0]  # right antenna
 # File Directories
 Current_folder = os.path.dirname(os.path.abspath(__file__))
 Input_directory = os.path.join(Current_folder, 'src')
@@ -50,6 +55,7 @@ def main():
     init_points = list()
     distal_points = list()
     l_points = list()
+    filter_points = list()
     for a in allfiles:
         in_name = os.path.join(Input_directory, a)
         # """ Selecting points from the image """
@@ -73,23 +79,31 @@ def main():
         plt.imshow(frame)
         (point) = plt.ginput(1)
         point = (int(point[0][0]), int(point[0][1]))
+
+
+        # Filter
+        ax.set(title='Click in Filter')
+        plt.imshow(frame)
+        (filterL,filterR) = plt.ginput(2)
+        filterL = (int(filterL[0]), int(filterL[1]))
+        filterR = (int(filterR[0]), int(filterR[1]))
         plt.close()
+
         # Add initial points
         l_points.append(point)
         init_points.append((ant_iniL, ant_iniR))
         distal_points.append((end_pL, end_pR))
+        filter_points.append((filterL,filterR))
 
     for a in allfiles:
         in_name = os.path.join(Input_directory, a)
         out_name = os.path.join(Output_directory, a.split('.')[0] + '.txt')
-        trackVideo(in_name, out_name, init_points.pop(0), distal_points.pop(0), l_points.pop(0))
+        trackVideo(in_name, out_name, init_points.pop(0), distal_points.pop(0), l_points.pop(0),filter_points.pop(0))
 
     return
 
 
-
-
-def trackVideo(input_name, output_name, init_points, distal_points, point):
+def trackVideo(input_name, output_name, init_points, distal_points, point, filter_points):
     """
         Main function of tracking
         Inputs a video file
@@ -101,18 +115,20 @@ def trackVideo(input_name, output_name, init_points, distal_points, point):
     ant_iniR = init_points[1]
     end_pL   = distal_points[0]
     end_pR   = distal_points[1]
-    count = 0                           # Count loop for file manipulation
+    filterL = filter_points[0]
+    filterR = filter_points[1]
+    count = 0                          # Count loop for file manipulation
     prev_angL = 0                      # Initialize memory previous angle Left
     prev_angR = 0                      # Initialize memory previous angle Right
     led_state = LedStart               # Inital state of the LED
     mem_points = {"Left": end_pL, "Right": end_pR}
     #   Dynamic Background Extraction Properties
-    fgbg500 = cv2.createBackgroundSubtractorMOG2(history=500, varThreshold=100, detectShadows=True)
+    fgbg500 = cv2.createBackgroundSubtractorMOG2(history=500, varThreshold=20, detectShadows=True) #history = number of first frames used; varThreshold = contrast detection
     cap = cv2.VideoCapture(input_name)    # Video Capture and Windowing
     ret, frame = cap.read()             # Initialize Stream
     #   Open Output points file
     fo = open(output_name, "wb")
-    fo.write(" \tSample\t\tLeft\t\t\tRight\t\t\tAngleLeft\tAngleRight\tLedState\n")
+    fo.write(" \tCount;Left;Right;AngleLeft;AngleRight;LedState\n")
     #   Use first image as Background
     fgmask500 = fgbg500.apply(frame)
     fgmask500 = cv2.dilate(fgmask500, kernel=np.ones((5, 5)), iterations=1)  # Clean image extraction
@@ -122,7 +138,7 @@ def trackVideo(input_name, output_name, init_points, distal_points, point):
                                                   frame.shape[1])]  # Crop from x, y, w, h -> 100, 200, 300, 400
     # Init
     sumPix = sum(cv2.sumElems(crop_img))
-    ret, frame = cap.read()    
+    ret, frame = cap.read()
     t = time.clock()
     # """ Infinite loop until no more images in video buffer """
     while (ret):
@@ -153,9 +169,14 @@ def trackVideo(input_name, output_name, init_points, distal_points, point):
         try:
             for draw in lines:
                 for x1, y1, x2, y2 in draw:
+                    if y1 > min(filterL[1], filterR[1]) and (x1 > filterL[0]) \
+                            and (x1 < filterR[0]) and mem_points.get("Left")[1] < 0.9*(min(filterL[1], filterR[1])) \
+                            and mem_points.get("Right")[1] < 0.9*(min(filterL[1], filterR[1]) ):
+                        continue
                     cv2.line(blank_image, (x1, y1), (x2, y2), (0, 255, 0), 3)
         except:
             pass
+
 
         # """ Points Extraction """
         detect_points = extractPoints(blank_image, end_pL, end_pR)
@@ -163,6 +184,20 @@ def trackVideo(input_name, output_name, init_points, distal_points, point):
         # """ PostProcess Points """
         # Select points in Angle Calculation
         (ant_endL, ant_endR) = detection(detect_points, mem_points)
+
+        # Manual re-definition of distal points if missed for 10 frames (both antennas)
+        global missedpts_l
+        global missedpts_r
+        if missedpts_l[0]== MissTresh or missedpts_r[0]== MissTresh:
+            plt.imshow(frame)
+            (ant_endL, ant_endR) = plt.ginput(2)
+            ant_endL = (int(ant_endL[0]), int(ant_endL[1]))
+            ant_endR = (int(ant_endR[0]), int(ant_endR[1]))
+            missedpts_l[0] = 0
+            missedpts_r[0] = 0
+            plt.close()
+
+
         mem_points["Left"] = ant_endL
         mem_points["Right"] = ant_endR
         # Calculate Angles
@@ -172,24 +207,34 @@ def trackVideo(input_name, output_name, init_points, distal_points, point):
         (angleL, prev_angL) = correctAngles(angleL, prev_angL)
         (angleR, prev_angR) = correctAngles(angleR, prev_angR)
 
+
+
         # """ Output """
         # File Output
-        line = "\t" + str(count) + "\t\t" + str(ant_endL) + "\t\t" + str(ant_endR) + "\t\t" + str(angleL) + "\t\t" \
-               + str(angleR) + "\t\t" + str(led_state) +"\n"
+        line = "\t" + str(count) + ";" + str(ant_endL) + ";" + str(ant_endR) + ";" + str(angleL) + ";" \
+               + str(angleR) + ";" + str(led_state) +"\n"
         fo.write(line)
         # Graphic Debug Red and Green circle colours of the point selected
         if DEBUG:
+            #cv2.circle(image, center, radius, (RGB color code), thickness, linetype, shift)
+            cv2.circle(frame, ant_endL, 10, (0, 0, 255)) #red
+            cv2.circle(frame, ant_endR, 10, (0, 255, 0)) #green
+            cv2.imshow('Debug', frame)
+
             cv2.circle(blank_image, ant_endL, 30, (0, 0, 255))
             cv2.circle(blank_image, ant_endR, 30, (0, 255, 0))
             cv2.imshow('BE', fgmask500)
             cv2.imshow('LD', blank_image)
+
+            #cv2.waitKey()   # frame by frame display
+
             # Escape Button [Esc], for frame by frame mode replace with cv2.waitKey()
             k = cv2.waitKey(30) & 0xff
             if k == 27:
                 break
         # """ Update Loop"""
         count += 1
-	ret, frame = cap.read()    
+	ret, frame = cap.read()
     tt = time.clock()
     # Print time
     if DEBUG:
@@ -234,17 +279,20 @@ def extractPoints(blank_image, end_pl, end_pr):
         topList.append(tuple(cnt[cnt[:,:,1].argmin()][0]))
         bottomList.append(tuple(cnt[cnt[:,:,1].argmax()][0]))
     # Sort and choose first in each of the directions
-    x = sorted(leftList, key=lambda x: x[0])[0]	
-    xR = sorted(rightList, key=lambda x: x[0], reverse = True)[0]
-    y = sorted(topList, key=lambda x: x[1])[0]	
-    yR = sorted(bottomList, key=lambda x: x[1], reverse = True)[0]	
-
+    try:
+        x = sorted(leftList, key=lambda x: x[0])[0]
+        xR = sorted(rightList, key=lambda x: x[0], reverse = True)[0]
+        y = sorted(topList, key=lambda x: x[1])[0]
+        yR = sorted(bottomList, key=lambda x: x[1], reverse = True)[0]
+    except IndexError:
+        pass
 
     if DEBUG:
-        cv2.circle(blank_image, x, 30, (0, 0, 255))
-        cv2.circle(blank_image, xR, 30, (0, 255, 0))
-        cv2.circle(blank_image, y, 30, (255, 0, 255))
-        cv2.circle(blank_image, yR, 30, (255,255,0))
+        #circles in 'LD' window (candidates)
+        cv2.circle(blank_image, x, 30, (0, 0, 255)) #left point *red*
+        cv2.circle(blank_image, xR, 30, (0, 255, 0)) #right point *green*
+        cv2.circle(blank_image, y, 30, (255, 0, 255)) #top point *blue*
+        cv2.circle(blank_image, yR, 30, (255,255,0)) #bottom point *purple*
     # Filtering by distances
     detect_points.append(x)
     if distance(xR, x) > LIMITSEP:
@@ -281,8 +329,14 @@ def detection(points, mem_points):
     # Preventing true negatives error according external value (maximun gap between samples)
     if distance(left, mem_points.get("Left")) > MaxVar:
         left = mem_points.get("Left")
+        global missedpts_l
+        missedpts_l[0] += 1
+    else: missedpts_l[0] = 0
     if distance(right, mem_points.get("Right")) > MaxVar:
         right = mem_points.get("Right")
+        global missedpts_r
+        missedpts_r[0] += 1
+    else: missedpts_r[0] = 0
 
     return (left, right)
 
@@ -319,5 +373,7 @@ def correctAngles(angle, prev_ang):
     return angle_result, prev_ang_result
 
 
+
 if __name__ == "__main__":
     main()
+
