@@ -128,7 +128,7 @@ def trackVideo(input_name, output_name, init_points, distal_points, point, filte
     ret, frame = cap.read()             # Initialize Stream
     #   Open Output points file
     fo = open(output_name, "wb")
-    fo.write(" \tCount;Left;Right;AngleLeft;AngleRight;LedState\n")
+    fo.write(" \tCount;LeftInit;Left;RightInit;Right;AngleLeft;AngleRight;LedState\n")
     #   Use first image as Background
     fgmask500 = fgbg500.apply(frame)
     fgmask500 = cv2.dilate(fgmask500, kernel=np.ones((5, 5)), iterations=1)  # Clean image extraction
