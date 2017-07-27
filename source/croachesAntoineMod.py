@@ -228,8 +228,8 @@ def trackVideo(input_name, output_name, init_points, distal_points, point, filte
 
         # """ Output """
         # File Output
-        line = "\t" + str(count) + ";" + str(ant_endL) + ";" + str(ant_endR) + ";" + str(angleL) + ";" \
-               + str(angleR) + ";" + str(led_state) +"\n"
+        line = "\t" + str(count) + ";" + str(ant_iniL) + ";" + str(ant_endL) + ";" + str(ant_iniR) + ";" \ 
+		+ str(ant_endR) + ";" + str(angleL) + ";" + str(angleR) + ";" + str(led_state) +"\n"
         fo.write(line)
         # Graphic Debug Red and Green circle colours of the point selected
         if DEBUG:
