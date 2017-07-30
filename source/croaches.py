@@ -110,8 +110,8 @@ def trackVideo(input_name, output_name, init_points, distal_points, point, filte
     ant_iniR = init_points[1]
     end_pL   = distal_points[0]
     end_pR   = distal_points[1]
-    filterL = filter_points[0];
-    filterR = filter_points[1];
+    filterL = filter_points[0]
+    filterR = filter_points[1]
     count = 0                           # Count loop for file manipulation
     prev_angL = 0                      # Initialize memory previous angle Left
     prev_angR = 0                      # Initialize memory previous angle Right
@@ -164,11 +164,15 @@ def trackVideo(input_name, output_name, init_points, distal_points, point, filte
         #   Filter lines with points in the squares defined by user
         #   The filter will not be applied if the tracking points obtained previously are closed to the regions.
         try:
+            filtered = 0
             for draw in lines:
                 for x1, y1, x2, y2 in draw:
 		    # Filter
+            # It doesn't draw the lines which belong to the filter area always that the previous tracking point is not close
                     if y1 > min(filterL[1], filterR[1]) and (x1 > filterL[0]) and (x1 < filterR[0]) \
-                            and mem_points.get("Left")[1] < 0.9*(min(filterL[1], filterR[1])) and mem_points.get("Right")[1] < 0.9*(min(filterL[1], filterR[1]) ):
+                            and mem_points.get("Left")[1] < 0.9*(min(filterL[1], filterR[1])) \
+                            and mem_points.get("Right")[1] < 0.9*(min(filterL[1], filterR[1]) ):
+                        filtered = 1
                         continue
                     cv2.line(blank_image, (x1, y1), (x2, y2), (0, 255, 0), 3)
         except:
@@ -199,6 +203,8 @@ def trackVideo(input_name, output_name, init_points, distal_points, point, filte
 
             cv2.circle(frame, ant_endL, 1, (0, 0, 255))
             cv2.circle(frame, ant_endR, 1, (0, 255, 0))
+            if filtered:
+                cv2.rectangle(frame, filterL, (filterR[0],frame.shape[1]),0)    # Filter Region
             cv2.imshow('Debug', frame)
 
 
