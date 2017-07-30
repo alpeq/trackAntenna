@@ -137,7 +137,7 @@ def trackVideo(input_name, output_name, init_points, distal_points, point, filte
     t = time.clock()
     # """ Infinite loop until no more images in video buffer """
     while (ret):
-
+        gray_image = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         # """ Crop and compare LED Image """
         crop_img = frame[ max(0,point[1] - SizeWin/2):min(point[1] + SizeWin/2 , frame.shape[0] ), max(0, point[0] - SizeWin/2):min(point[0] + SizeWin/2, frame.shape[1] )]  # Crop from x, y, w, h -> 100, 200, 300, 400
         if sum(cv2.sumElems(crop_img)) - sumPix > LedThreshold:
@@ -154,11 +154,16 @@ def trackVideo(input_name, output_name, init_points, distal_points, point, filte
         fgmask500 = fgbg500.apply(frame)
         fgmask500 = cv2.dilate(fgmask500, kernel=np.ones((5, 5)), iterations=1)  # Clean image extraction
 
+        #Threshold Gray image
+        ret,thresh = cv2.threshold(gray_image,60,255,cv2.THRESH_BINARY_INV) #127 90 80
+        thresh = cv2.dilate(thresh , kernel=np.ones((5, 5)), iterations=1)  # Clean image extraction
 
+        cv2.imshow('GRAY', gray_image)
+        cv2.imshow('TRH', thresh)
         #  """ Line Detection """
         blank_image = np.zeros((frame.shape[0], frame.shape[1], 3), np.uint8)
         #   Get Lines
-        lines = cv2.HoughLinesP(fgmask500, 1, np.pi / 180, Threshold_static, lines=None,
+        lines = cv2.HoughLinesP(thresh, 1, np.pi / 180, Threshold_static, lines=None,
                                 minLineLength=Minline_length_static, maxLineGap=Maxline_gap_static)
         #  """ Draw Lines """
         #   Filter lines with points in the squares defined by user
@@ -212,14 +217,14 @@ def trackVideo(input_name, output_name, init_points, distal_points, point, filte
             cv2.circle(blank_image, ant_endR, 30, (0, 255, 0))
             cv2.imshow('BE', fgmask500)
             cv2.imshow('LD', blank_image)
-            cv2.waitKey()
+            cv2.waitKey(1)
             # Escape Button [Esc], for frame by frame mode replace with cv2.waitKey()
             k = cv2.waitKey(30) & 0xff
             if k == 27:
                 break
         # """ Update Loop"""
         count += 1
-	ret, frame = cap.read()    
+	ret, frame = cap.read()
     tt = time.clock()
     # Print time
     if DEBUG:
