@@ -26,7 +26,7 @@ Maxline_gap_static = 0
 Threshold_static = 50
 # Point Extraction Variables
 LIMITSEP = 50       # Minimal separation between points Isolation point function
-MaxVar = 200        # Maximal distance allowed between frames
+MaxVar = 200        # Maximal distance allowed between frames 200
 # LED Detection
 SizeWin = 200       # Length in pixels of window around the led in order to Detect
 LedStart = 0        # State of Led at the beginning
@@ -50,6 +50,7 @@ def main():
     init_points = list()
     distal_points = list()
     l_points = list()
+    filter_points = list()
     for a in allfiles:
         in_name = os.path.join(Input_directory, a)
         # """ Selecting points from the image """
@@ -73,23 +74,31 @@ def main():
         plt.imshow(frame)
         (point) = plt.ginput(1)
         point = (int(point[0][0]), int(point[0][1]))
+
+
+        # Filter
+        ax.set(title='Click in Filter (UpperLeft and UpperRight of a square area)')
+        plt.imshow(frame)
+        (filterL,filterR) = plt.ginput(2)
+        filterL = (int(filterL[0]), int(filterL[1]))
+        filterR = (int(filterR[0]), int(filterR[1]))
         plt.close()
+
         # Add initial points
         l_points.append(point)
         init_points.append((ant_iniL, ant_iniR))
         distal_points.append((end_pL, end_pR))
+        filter_points.append((filterL,filterR))
 
     for a in allfiles:
         in_name = os.path.join(Input_directory, a)
         out_name = os.path.join(Output_directory, a.split('.')[0] + '.txt')
-        trackVideo(in_name, out_name, init_points.pop(0), distal_points.pop(0), l_points.pop(0))
+        trackVideo(in_name, out_name, init_points.pop(0), distal_points.pop(0), l_points.pop(0),filter_points.pop(0))
 
     return
 
 
-
-
-def trackVideo(input_name, output_name, init_points, distal_points, point):
+def trackVideo(input_name, output_name, init_points, distal_points, point, filter_points):
     """
         Main function of tracking
         Inputs a video file
@@ -101,13 +110,15 @@ def trackVideo(input_name, output_name, init_points, distal_points, point):
     ant_iniR = init_points[1]
     end_pL   = distal_points[0]
     end_pR   = distal_points[1]
+    filterL = filter_points[0]
+    filterR = filter_points[1]
     count = 0                           # Count loop for file manipulation
     prev_angL = 0                      # Initialize memory previous angle Left
     prev_angR = 0                      # Initialize memory previous angle Right
     led_state = LedStart               # Inital state of the LED
     mem_points = {"Left": end_pL, "Right": end_pR}
     #   Dynamic Background Extraction Properties
-    fgbg500 = cv2.createBackgroundSubtractorMOG2(history=500, varThreshold=100, detectShadows=True)
+    fgbg500 = cv2.createBackgroundSubtractorMOG2(history=500, varThreshold=10, detectShadows=True) #100
     cap = cv2.VideoCapture(input_name)    # Video Capture and Windowing
     ret, frame = cap.read()             # Initialize Stream
     #   Open Output points file
@@ -149,10 +160,20 @@ def trackVideo(input_name, output_name, init_points, distal_points, point):
         #   Get Lines
         lines = cv2.HoughLinesP(fgmask500, 1, np.pi / 180, Threshold_static, lines=None,
                                 minLineLength=Minline_length_static, maxLineGap=Maxline_gap_static)
-        #   Draw Lines
+        #  """ Draw Lines """
+        #   Filter lines with points in the squares defined by user
+        #   The filter will not be applied if the tracking points obtained previously are closed to the regions.
         try:
+            filtered = 0
             for draw in lines:
                 for x1, y1, x2, y2 in draw:
+		    # Filter
+            # It doesn't draw the lines which belong to the filter area always that the previous tracking point is not close
+                    if y1 > min(filterL[1], filterR[1]) and (x1 > filterL[0]) and (x1 < filterR[0]) \
+                            and mem_points.get("Left")[1] < 0.9*(min(filterL[1], filterR[1])) \
+                            and mem_points.get("Right")[1] < 0.9*(min(filterL[1], filterR[1]) ):
+                        filtered = 1
+                        continue
                     cv2.line(blank_image, (x1, y1), (x2, y2), (0, 255, 0), 3)
         except:
             pass
@@ -179,10 +200,19 @@ def trackVideo(input_name, output_name, init_points, distal_points, point):
         fo.write(line)
         # Graphic Debug Red and Green circle colours of the point selected
         if DEBUG:
+
+            cv2.circle(frame, ant_endL, 1, (0, 0, 255))
+            cv2.circle(frame, ant_endR, 1, (0, 255, 0))
+            if filtered:
+                cv2.rectangle(frame, filterL, (filterR[0],frame.shape[1]),0)    # Filter Region
+            cv2.imshow('Debug', frame)
+
+
             cv2.circle(blank_image, ant_endL, 30, (0, 0, 255))
             cv2.circle(blank_image, ant_endR, 30, (0, 255, 0))
             cv2.imshow('BE', fgmask500)
             cv2.imshow('LD', blank_image)
+            cv2.waitKey()
             # Escape Button [Esc], for frame by frame mode replace with cv2.waitKey()
             k = cv2.waitKey(30) & 0xff
             if k == 27:
@@ -326,3 +356,4 @@ def correctAngles(angle, prev_ang):
 
 if __name__ == "__main__":
     main()
+
