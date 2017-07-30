@@ -257,6 +257,10 @@ def extractPoints(blank_image, end_pl, end_pr):
         rightList.append(tuple(cnt[cnt[:,:,0].argmax()][0]))
         topList.append(tuple(cnt[cnt[:,:,1].argmin()][0]))
         bottomList.append(tuple(cnt[cnt[:,:,1].argmax()][0]))
+
+    # if leftList is empty there is no points in the tracked image
+    if not leftList:
+        return list()
     # Sort and choose first in each of the directions
     x = sorted(leftList, key=lambda x: x[0])[0]	
     xR = sorted(rightList, key=lambda x: x[0], reverse = True)[0]
@@ -264,11 +268,6 @@ def extractPoints(blank_image, end_pl, end_pr):
     yR = sorted(bottomList, key=lambda x: x[1], reverse = True)[0]	
 
 
-    if DEBUG:
-        cv2.circle(blank_image, x, 30, (0, 0, 255))
-        cv2.circle(blank_image, xR, 30, (0, 255, 0))
-        cv2.circle(blank_image, y, 30, (255, 0, 255))
-        cv2.circle(blank_image, yR, 30, (255,255,0))
     # Filtering by distances
     detect_points.append(x)
     if distance(xR, x) > LIMITSEP:
@@ -278,6 +277,12 @@ def extractPoints(blank_image, end_pl, end_pr):
     if distance(yR, x) > LIMITSEP and distance(yR, xR) > LIMITSEP and distance(
             yR, y) > LIMITSEP:
         detect_points.append(yR)
+
+    if DEBUG:
+        cv2.circle(blank_image, x, 30, (0, 0, 255))
+        cv2.circle(blank_image, xR, 30, (0, 255, 0))
+        cv2.circle(blank_image, y, 30, (255, 0, 255))
+        cv2.circle(blank_image, yR, 30, (255,255,0))
 
     return detect_points
 
@@ -289,10 +294,10 @@ def distance(p0, p1):
 
 def detection(points, mem_points):
     """ Detect minimun values of each tuple dimension"""
-    minL  = 99999
-    minR  = 99999
-    left  = 99999
-    right = 99999
+    minL  = 9999999
+    minR  = 9999999
+    left  = (9999999, 9999999)
+    right = (9999999, 9999999)
     for p in points:
         disL = distance(p, mem_points.get("Left"))
         disR = distance(p, mem_points.get("Right"))
