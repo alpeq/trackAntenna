@@ -139,7 +139,11 @@ def trackVideo(input_name, output_name, init_points, distal_points, point, filte
     while (ret):
         gray_image = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         # """ Crop and compare LED Image """
-        crop_img = frame[ max(0,point[1] - SizeWin/2):min(point[1] + SizeWin/2 , frame.shape[0] ), max(0, point[0] - SizeWin/2):min(point[0] + SizeWin/2, frame.shape[1] )]  # Crop from x, y, w, h -> 100, 200, 300, 400
+        LedUpper = (max(0, point[1] - SizeWin / 2), max(0, point[0] - SizeWin / 2))
+        LedLower = (min(point[1] + SizeWin / 2, frame.shape[0]), min(point[0] + SizeWin / 2, frame.shape[1]))
+        #crop_img = frame[ max(0,point[1] - SizeWin/2):min(point[1] + SizeWin/2 , frame.shape[0] ), max(0, point[0] - SizeWin/2):min(point[0] + SizeWin/2, frame.shape[1] )]  # Crop from x, y, w, h -> 100, 200, 300, 400
+        crop_img = frame[LedUpper[0]:LedLower[0],LedUpper[1]:LedLower[1]]
+
         if sum(cv2.sumElems(crop_img)) - sumPix > LedThreshold:
             led_state += 1
         elif sum(cv2.sumElems(crop_img)) - sumPix < -LedThreshold:
@@ -172,14 +176,12 @@ def trackVideo(input_name, output_name, init_points, distal_points, point, filte
             filtered = 0
             for draw in lines:
                 for x1, y1, x2, y2 in draw:
-		    # Filter
-            # It doesn't draw the lines which belong to the filter area always that the previous tracking point is not close
-                    if y1 > min(filterL[1], filterR[1]) and (x1 > filterL[0]) and (x1 < filterR[0]) \
-                            and mem_points.get("Left")[1] < 0.9*(min(filterL[1], filterR[1])) \
-                            and mem_points.get("Right")[1] < 0.9*(min(filterL[1], filterR[1]) ):
-                        filtered = 1
-                        continue
-                    cv2.line(blank_image, (x1, y1), (x2, y2), (0, 255, 0), 3)
+                    # Filter
+                   filterBool = filterLevel(filterL, filterR, mem_points, x1, x2, y1, y2)
+                   if filterBool:
+                       filtered = 1
+                       continue
+                   cv2.line(blank_image, (x1, y1), (x2, y2), (0, 255, 0), 3)
         except:
             pass
 
@@ -205,19 +207,17 @@ def trackVideo(input_name, output_name, init_points, distal_points, point, filte
         fo.write(line)
         # Graphic Debug Red and Green circle colours of the point selected
         if DEBUG:
-
             cv2.circle(frame, ant_endL, 1, (0, 0, 255))
             cv2.circle(frame, ant_endR, 1, (0, 255, 0))
             if filtered:
                 cv2.rectangle(frame, filterL, (filterR[0],frame.shape[1]),0)    # Filter Region
             cv2.imshow('Debug', frame)
 
-
             cv2.circle(blank_image, ant_endL, 30, (0, 0, 255))
             cv2.circle(blank_image, ant_endR, 30, (0, 255, 0))
             cv2.imshow('BE', fgmask500)
             cv2.imshow('LD', blank_image)
-            cv2.waitKey(1)
+            cv2.waitKey()
             # Escape Button [Esc], for frame by frame mode replace with cv2.waitKey()
             k = cv2.waitKey(30) & 0xff
             if k == 27:
@@ -236,6 +236,18 @@ def trackVideo(input_name, output_name, init_points, distal_points, point, filte
         cv2.destroyAllWindows()
     print "Closing file " + input_name
     return
+
+def filterLevel(filterL, filterR, mem_points, x1, x2, y1, y2):
+    filter = 0
+    # Filter
+    # It doesn't draw the lines which belong to the filter area always that the previous tracking point is not close
+    if y1 > min(filterL[1], filterR[1]) and (x1 > filterL[0]) and (x1 < filterR[0]) \
+            and mem_points.get("Left")[1] < 0.9 * (min(filterL[1], filterR[1])) \
+            and mem_points.get("Right")[1] < 0.9 * (min(filterL[1], filterR[1])):
+        filter = 1
+    return filter
+    # Hardcode Left Corner
+    #if
 
 
 def extractPoints(blank_image, end_pl, end_pr):
@@ -277,7 +289,6 @@ def extractPoints(blank_image, end_pl, end_pr):
     xR = sorted(rightList, key=lambda x: x[0], reverse = True)[0]
     y = sorted(topList, key=lambda x: x[1])[0]	
     yR = sorted(bottomList, key=lambda x: x[1], reverse = True)[0]	
-
 
     # Filtering by distances
     detect_points.append(x)
