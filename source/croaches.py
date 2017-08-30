@@ -32,7 +32,7 @@ SizeWin = 100       # Length in pixels of window around the led in order to Dete
 LedStart = 0        # State of Led at the beginning
 LedThreshold = 15000
 # Number of missed distal points allowed
-MissTresh = 3
+MissTresh = 10
 # File Directories
 Current_folder = os.path.dirname(os.path.abspath(__file__))
 Input_directory = os.path.join(Current_folder, 'src')
