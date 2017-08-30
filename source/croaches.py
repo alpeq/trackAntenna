@@ -32,7 +32,7 @@ SizeWin = 100       # Length in pixels of window around the led in order to Dete
 LedStart = 0        # State of Led at the beginning
 LedThreshold = 15000
 # Number of missed distal points allowed
-MissTresh = 10
+MissTresh = 3
 # File Directories
 Current_folder = os.path.dirname(os.path.abspath(__file__))
 Input_directory = os.path.join(Current_folder, 'src')
@@ -119,7 +119,8 @@ def trackVideo(input_name, output_name, init_points, distal_points, point, filte
     prev_angR = 0                      # Initialize memory previous angle Right
     led_state = LedStart               # Inital state of the LED
     mem_points = {"Left": end_pL, "Right": end_pR}
-    miss_steps = 0
+    miss_l = 0
+    miss_r = 0
     #   Dynamic Background Extraction Properties
     fgbg500 = cv2.createBackgroundSubtractorMOG2(history=500, varThreshold=20, detectShadows=False) #history = number of first frames used; varThreshold = contrast detection
     cap = cv2.VideoCapture(input_name)    # Video Capture and Windowing
@@ -186,7 +187,7 @@ def trackVideo(input_name, output_name, init_points, distal_points, point, filte
 
         # """ PostProcess Points """
         # Select points in Angle Calculation
-        (ant_endL, ant_endR, miss_steps) = detection(detect_points, mem_points, miss_steps)
+        (ant_endL, ant_endR, miss_l, miss_r) = detection(detect_points, mem_points, miss_l, miss_r)
 
         # Press 'q' to manually redefine the antennal distal points if they get stuck inside the filter
         # THIS SLOWS DOWN THE TRACKING INSIDE THE FILTER (the higher the waitKey number, the bigger the delay).
@@ -198,16 +199,18 @@ def trackVideo(input_name, output_name, init_points, distal_points, point, filte
                 (ant_endL, ant_endR) = plt.ginput(2)
                 ant_endL = (int(ant_endL[0]), int(ant_endL[1]))
                 ant_endR = (int(ant_endR[0]), int(ant_endR[1]))
-                miss_steps = 0
+                miss_l = 0
+                miss_r = 0
                 plt.close()
 
         # Manual re-definition of distal points if missed for 10 frames (both antennas)
-        if miss_steps >= MissTresh:
+        if miss_l >= MissTresh or miss_r >= MissTresh:
             plt.imshow(frame)
             (ant_endL, ant_endR) = plt.ginput(2)
             ant_endL = (int(ant_endL[0]), int(ant_endL[1]))
             ant_endR = (int(ant_endR[0]), int(ant_endR[1]))
-            miss_steps = 0
+            miss_l = 0
+            miss_r = 0
             plt.close()
 
 
@@ -332,14 +335,12 @@ def distance(p0, p1):
         return math.sqrt(squareSum)
 
 
-def detection(points, mem_points, miss_steps):
+def detection(points, mem_points, miss_l, miss_r):
     """ Detect minimun values of each tuple dimension"""
     minL  = 9999999
     minR  = 9999999
     left  = (9999999, 9999999)
     right = (9999999, 9999999)
-    miss_l = 0
-    miss_r = 0
     for p in points:
         disL = distance(p, mem_points.get("Left"))
         disR = distance(p, mem_points.get("Right"))
@@ -353,17 +354,16 @@ def detection(points, mem_points, miss_steps):
     # Preventing true negatives (maximun gap between samples) and confounding between antennas
     if distance(left, mem_points.get("Left")) > MaxVar or distance(left, right) == 0:
         left = mem_points.get("Left")
-        miss_l = 1
+        miss_l += 1
+    else:
+        miss_l = 0
     if distance(right, mem_points.get("Right")) > MaxVar or distance(left, right) == 0:
         right = mem_points.get("Right")
-        miss_r = 1
-    # Update value of missing steps
-    if miss_l or miss_r:
-        miss_steps += 1
-    elif not miss_l and not miss_r:
-        miss_steps = 0
+        miss_r += 1
+    else:
+        miss_r = 0
 
-    return (left, right, miss_steps)
+    return (left, right, miss_l, miss_r)
 
 
 def get_angle(p0, p1=np.array([0, 0]), p2=None):
