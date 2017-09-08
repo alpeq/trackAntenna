@@ -326,7 +326,7 @@ def extractPoints(blank_image, end_pl, end_pr):
 
 def distance(p0, p1):
     """ Calculate Euclidean distance between 2 points"""
-    squareSum = (p0[0] - p1[0]) ** 2 + (p0[1] - p1[1]) ** 2
+    squareSum = math.pow((p0[0] - p1[0]), 2 )+ math.pow((p0[1] - p1[1]), 2)
     if not squareSum:
         return 0
     else:
